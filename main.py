@@ -266,3 +266,43 @@ async def upcoming_ipos():
         "source": "nasdaq-api",
         "timestamp": now_utc(),
     }
+
+WATCHLIST = [
+    "SPY", "QQQ", "IWM", "DIA",
+    "NVDA", "AAPL", "MSFT", "AMZN", "META", "TSLA",
+    "AMD", "SMCI", "PLTR", "NFLX", "GOOGL", "AVGO",
+    "COIN", "MSTR", "UBER", "ARM"
+]
+
+
+@app.get("/market/movers")
+async def market_movers():
+    movers = []
+
+    for sym in WATCHLIST:
+        item = await td_get("/quote", {"symbol": sym})
+        try:
+            movers.append(
+                {
+                    "symbol": sym,
+                    "price": float(item.get("close", 0) or 0),
+                    "change": float(item.get("change", 0) or 0),
+                    "changePct": float(item.get("percent_change", 0) or 0),
+                    "volume": float(item.get("volume", 0) or 0),
+                }
+            )
+        except Exception:
+            continue
+
+    gainers = sorted(movers, key=lambda x: x["changePct"], reverse=True)[:5]
+    losers = sorted(movers, key=lambda x: x["changePct"])[:5]
+    active = sorted(movers, key=lambda x: x["volume"], reverse=True)[:5]
+
+    return {
+        "gainers": gainers,
+        "losers": losers,
+        "mostActive": active,
+        "universeSize": len(movers),
+        "source": "twelve-data-derived",
+        "timestamp": now_utc(),
+    }
