@@ -56,17 +56,17 @@ def health():
 
 @app.get("/market/regime")
 async def market_regime():
-    spy = await td_get("/quote", {"symbol": "SPY"})
-    qqq = await td_get("/quote", {"symbol": "QQQ"})
-    iwm = await td_get("/quote", {"symbol": "IWM"})
+    data = await td_get("/quote", {"symbol": "SPY,QQQ,IWM"})
+    items = data if isinstance(data, list) else [data]
 
-    def pct(x):
+    changes = {}
+    for item in items:
         try:
-            return float(x.get("percent_change", 0))
+            changes[item.get("symbol")] = float(item.get("percent_change", 0))
         except Exception:
-            return 0.0
+            changes[item.get("symbol")] = 0.0
 
-    avg = (pct(spy) + pct(qqq) + pct(iwm)) / 3
+    avg = sum(changes.values()) / max(len(changes), 1)
 
     if avg > 0.5:
         regime = "risk-on"
@@ -77,11 +77,7 @@ async def market_regime():
 
     return {
         "regime": regime,
-        "drivers": {
-            "SPY": spy.get("percent_change"),
-            "QQQ": qqq.get("percent_change"),
-            "IWM": iwm.get("percent_change"),
-        },
+        "drivers": changes,
         "source": "twelve-data",
         "timestamp": now_utc(),
     }
