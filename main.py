@@ -223,25 +223,46 @@ def ticker_news(symbol: str = Query(..., description="Ticker symbol")):
 
 @app.get("/ipos/upcoming")
 async def upcoming_ipos():
-    url = "https://www.nasdaq.com/market-activity/ipos"
+    url = "https://api.nasdaq.com/api/ipo/calendar?date=upcoming"
 
     headers = {
         "User-Agent": "Mozilla/5.0",
-        "Accept": "text/html,application/xhtml+xml",
+        "Accept": "application/json",
+        "Referer": "https://www.nasdaq.com/",
     }
 
-    async with httpx.AsyncClient(timeout=20.0, headers=headers, follow_redirects=True) as client:
+    async with httpx.AsyncClient(timeout=20.0, headers=headers) as client:
         resp = await client.get(url)
 
     if resp.status_code >= 400:
-        raise HTTPException(status_code=resp.status_code, detail="Failed to fetch Nasdaq IPO page")
+        raise HTTPException(status_code=resp.status_code, detail="Failed to fetch Nasdaq IPO API")
 
-    html = resp.text
+    data = resp.json()
+
+    try:
+        rows = data["data"]["upcoming"]["rows"]
+    except Exception:
+        return {
+            "items": [],
+            "source": "nasdaq-api",
+            "timestamp": now_utc(),
+            "error": "Structure changed or no data"
+        }
+
+    items = []
+    for row in rows:
+        items.append({
+            "symbol": row.get("symbol"),
+            "name": row.get("companyName"),
+            "exchange": row.get("exchange"),
+            "price": row.get("priceRange"),
+            "shares": row.get("shares"),
+            "expectedDate": row.get("expectedDate"),
+        })
 
     return {
-        "items": [],
-        "source": "nasdaq-page",
+        "items": items,
+        "count": len(items),
+        "source": "nasdaq-api",
         "timestamp": now_utc(),
-        "note": "Page fetch works, but parsing logic still needs to be added based on the current Nasdaq page structure.",
-        "preview": html[:2000]
     }
