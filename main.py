@@ -3,11 +3,9 @@ from fastapi import FastAPI, Query
 
 app = FastAPI(title="Apex Live API", version="1.0.0")
 
-
 @app.get("/")
 def root():
     return {"message": "Apex API is running"}
-
 
 @app.get("/health")
 def health():
@@ -16,7 +14,6 @@ def health():
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
-
 @app.get("/market/regime")
 def market_regime():
     return {
@@ -24,7 +21,6 @@ def market_regime():
         "source": "live-api",
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
-
 
 @app.get("/index/snapshot")
 def index_snapshot():
@@ -37,7 +33,6 @@ def index_snapshot():
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
-
 @app.get("/sector/rotation")
 def sector_rotation():
     return {
@@ -47,14 +42,22 @@ def sector_rotation():
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
-
 @app.get("/ticker/quote")
-def ticker_quote(symbol: str = Query(..., description="Ticker symbol, e.g. NVDA")):
+def ticker_quote(symbol: str = Query(..., description="Ticker symbol")):
     return {
         "symbol": symbol.upper(),
         "price": 0,
         "changePct": 0,
         "volume": 0,
+        "source": "live-api",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+@app.get("/ticker/intraday")
+def ticker_intraday(symbol: str = Query(..., description="Ticker symbol")):
+    return {
+        "symbol": symbol.upper(),
+        "bars": [],
         "source": "live-api",
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
