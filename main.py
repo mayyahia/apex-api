@@ -1,11 +1,8 @@
-from cachetools import TTLCache
-
-quote_cache = TTLCache(maxsize=200, ttl=30)
-series_cache = TTLCache(maxsize=100, ttl=30)
 from datetime import datetime, timezone
 import os
 
 import httpx
+from cachetools import TTLCache
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException, Query
 
@@ -15,6 +12,9 @@ app = FastAPI(title="Apex Live API", version="1.0.0")
 
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY")
 TD_BASE = "https://api.twelvedata.com"
+
+quote_cache = TTLCache(maxsize=200, ttl=60)
+series_cache = TTLCache(maxsize=100, ttl=60)
 
 
 def now_utc():
@@ -34,8 +34,16 @@ async def td_get(path: str, params: dict):
 
     async with httpx.AsyncClient(timeout=20.0) as client:
         resp = await client.get(f"{TD_BASE}{path}", params=merged)
-        resp.raise_for_status()
         data = resp.json()
+
+    if resp.status_code == 429:
+        raise HTTPException(
+            status_code=429,
+            detail="Twelve Data minute limit hit. Wait and retry."
+        )
+
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail=data)
 
     if isinstance(data, dict) and data.get("status") == "error":
         raise HTTPException(status_code=400, detail=data)
@@ -56,15 +64,17 @@ def health():
 
 @app.get("/market/regime")
 async def market_regime():
-    data = await td_get("/quote", {"symbol": "SPY,QQQ,IWM"})
+    data = await td_get("/quote", {"symbol": "SPY,QQQ,IWM,DIA"})
     items = data if isinstance(data, list) else [data]
 
     changes = {}
     for item in items:
-        try:
-            changes[item.get("symbol")] = float(item.get("percent_change", 0))
-        except Exception:
-            changes[item.get("symbol")] = 0.0
+        sym = item.get("symbol")
+        if sym in {"SPY", "QQQ", "IWM"}:
+            try:
+                changes[sym] = float(item.get("percent_change", 0))
+            except Exception:
+                changes[sym] = 0.0
 
     avg = sum(changes.values()) / max(len(changes), 1)
 
@@ -85,12 +95,10 @@ async def market_regime():
 
 @app.get("/index/snapshot")
 async def index_snapshot():
-    symbols = "SPY,QQQ,IWM,DIA"
-    data = await td_get("/quote", {"symbol": symbols})
-
+    data = await td_get("/quote", {"symbol": "SPY,QQQ,IWM,DIA"})
     items = data if isinstance(data, list) else [data]
-    out = {"source": "twelve-data", "timestamp": now_utc()}
 
+    out = {"source": "twelve-data", "timestamp": now_utc()}
     for item in items:
         sym = item.get("symbol")
         if sym:
@@ -103,9 +111,38 @@ async def index_snapshot():
     return out
 
 
+@app.get("/sector/rotation")
+async def sector_rotation():
+    sector_symbols = "XLK,XLF,XLE,XLI,XLY,XLV"
+    data = await td_get("/quote", {"symbol": sector_symbols})
+    items = data if isinstance(data, list) else [data]
+
+    parsed = []
+    for item in items:
+        try:
+            parsed.append(
+                {
+                    "symbol": item.get("symbol"),
+                    "changePct": float(item.get("percent_change", 0)),
+                }
+            )
+        except Exception:
+            continue
+
+    parsed.sort(key=lambda x: x["changePct"], reverse=True)
+
+    return {
+        "leaders": parsed[:2],
+        "laggards": parsed[-2:],
+        "source": "twelve-data",
+        "timestamp": now_utc(),
+    }
+
+
 @app.get("/ticker/quote")
 async def ticker_quote(symbol: str = Query(..., description="Ticker symbol")):
     data = await td_get("/quote", {"symbol": symbol.upper()})
+
     return {
         "symbol": data.get("symbol", symbol.upper()),
         "price": data.get("close"),
@@ -122,7 +159,10 @@ async def ticker_quote(symbol: str = Query(..., description="Ticker symbol")):
 
 
 @app.get("/ticker/intraday")
-async def ticker_intraday(symbol: str = Query(...), interval: str = "5min"):
+async def ticker_intraday(
+    symbol: str = Query(..., description="Ticker symbol"),
+    interval: str = Query("5min", description="Bar interval"),
+):
     data = await td_get(
         "/time_series",
         {
@@ -153,28 +193,22 @@ async def ticker_intraday(symbol: str = Query(...), interval: str = "5min"):
         "source": "twelve-data",
         "timestamp": now_utc(),
     }
-@app.get("/sector/rotation")
-async def sector_rotation():
-    sector_symbols = "XLK,XLF,XLE,XLV,XLI,XLY,XLP,XLU,XLB,XLRE,XLC"
-    data = await td_get("/quote", {"symbol": sector_symbols})
 
-    items = data if isinstance(data, list) else [data]
 
-    parsed = []
-    for item in items:
-        try:
-            parsed.append({
-                "symbol": item.get("symbol"),
-                "changePct": float(item.get("percent_change", 0))
-            })
-        except Exception:
-            continue
-
-    parsed.sort(key=lambda x: x["changePct"], reverse=True)
-
+@app.get("/ticker/news")
+def ticker_news(symbol: str = Query(..., description="Ticker symbol")):
     return {
-        "leaders": parsed[:3],
-        "laggards": parsed[-3:],
-        "source": "twelve-data",
+        "symbol": symbol.upper(),
+        "items": [],
+        "source": "stub",
+        "timestamp": now_utc(),
+    }
+
+
+@app.get("/ipos/upcoming")
+def upcoming_ipos():
+    return {
+        "items": [],
+        "source": "stub",
         "timestamp": now_utc(),
     }
