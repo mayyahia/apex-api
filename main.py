@@ -116,7 +116,7 @@ async def index_snapshot():
 
 @app.get("/sector/rotation")
 async def sector_rotation():
-    sector_symbols = ["XLK", "XLF", "XLE", "XLI", "XLY", "XLV"]
+    sector_symbols = ["XLK", "XLF", "XLE", "XLV"]
     parsed = []
 
     for sym in sector_symbols:
@@ -129,12 +129,7 @@ async def sector_rotation():
                 }
             )
         except Exception:
-            parsed.append(
-                {
-                    "symbol": sym,
-                    "changePct": 0.0,
-                }
-            )
+            parsed.append({"symbol": sym, "changePct": 0.0})
 
     parsed.sort(key=lambda x: x["changePct"], reverse=True)
 
