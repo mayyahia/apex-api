@@ -65,14 +65,25 @@ def health():
 @app.get("/market/regime")
 async def market_regime():
     data = await td_get("/quote", {"symbol": "SPY,QQQ,IWM,DIA"})
-    items = data if isinstance(data, list) else [data]
+
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        if "data" in data and isinstance(data["data"], list):
+            items = data["data"]
+        elif "symbol" in data:
+            items = [data]
+        else:
+            items = []
+    else:
+        items = []
 
     changes = {}
     for item in items:
         sym = item.get("symbol")
         if sym in {"SPY", "QQQ", "IWM"}:
             try:
-                changes[sym] = float(item.get("percent_change", 0))
+                changes[sym] = float(item.get("percent_change", 0) or 0)
             except Exception:
                 changes[sym] = 0.0
 
@@ -90,6 +101,7 @@ async def market_regime():
         "drivers": changes,
         "source": "twelve-data",
         "timestamp": now_utc(),
+        "rawCount": len(items),
     }
 
 
