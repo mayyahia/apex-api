@@ -195,12 +195,26 @@ async def ticker_intraday(
     }
 
 
+import feedparser
+
 @app.get("/ticker/news")
 def ticker_news(symbol: str = Query(..., description="Ticker symbol")):
+    feed_url = f"https://finance.yahoo.com/rss/headline?s={symbol.upper()}"
+    feed = feedparser.parse(feed_url)
+
+    items = []
+    for entry in feed.entries[:10]:
+        items.append({
+            "title": entry.get("title"),
+            "link": entry.get("link"),
+            "published": entry.get("published"),
+            "summary": entry.get("summary"),
+        })
+
     return {
         "symbol": symbol.upper(),
-        "items": [],
-        "source": "stub",
+        "items": items,
+        "source": "yahoo-rss",
         "timestamp": now_utc(),
     }
 
