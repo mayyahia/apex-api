@@ -1,6 +1,7 @@
 from datetime import datetime, timezone
 import os
 
+import feedparser
 import httpx
 from cachetools import TTLCache
 from dotenv import load_dotenv
@@ -13,8 +14,15 @@ app = FastAPI(title="Apex Live API", version="1.0.0")
 TWELVE_DATA_API_KEY = os.getenv("TWELVE_DATA_API_KEY")
 TD_BASE = "https://api.twelvedata.com"
 
-quote_cache = TTLCache(maxsize=200, ttl=60)
+quote_cache = TTLCache(maxsize=300, ttl=60)
 series_cache = TTLCache(maxsize=100, ttl=60)
+movers_cache = TTLCache(maxsize=10, ttl=60)
+
+WATCHLIST = [
+    "SPY", "QQQ", "IWM",
+    "NVDA", "AAPL", "TSLA",
+    "AMD", "PLTR",
+]
 
 
 def now_utc():
@@ -39,7 +47,7 @@ async def td_get(path: str, params: dict):
     if resp.status_code == 429:
         raise HTTPException(
             status_code=429,
-            detail="Twelve Data minute limit hit. Wait and retry."
+            detail="Twelve Data minute limit hit. Wait and retry.",
         )
 
     if resp.status_code >= 400:
@@ -197,8 +205,6 @@ async def ticker_intraday(
     }
 
 
-import feedparser
-
 @app.get("/ticker/news")
 def ticker_news(symbol: str = Query(..., description="Ticker symbol")):
     feed_url = f"https://finance.yahoo.com/rss/headline?s={symbol.upper()}"
@@ -206,12 +212,14 @@ def ticker_news(symbol: str = Query(..., description="Ticker symbol")):
 
     items = []
     for entry in feed.entries[:10]:
-        items.append({
-            "title": entry.get("title"),
-            "link": entry.get("link"),
-            "published": entry.get("published"),
-            "summary": entry.get("summary"),
-        })
+        items.append(
+            {
+                "title": entry.get("title"),
+                "link": entry.get("link"),
+                "published": entry.get("published"),
+                "summary": entry.get("summary"),
+            }
+        )
 
     return {
         "symbol": symbol.upper(),
@@ -246,19 +254,21 @@ async def upcoming_ipos():
             "items": [],
             "source": "nasdaq-api",
             "timestamp": now_utc(),
-            "error": "Structure changed or no data"
+            "error": "Structure changed or no data",
         }
 
     items = []
     for row in rows:
-        items.append({
-            "symbol": row.get("symbol"),
-            "name": row.get("companyName"),
-            "exchange": row.get("exchange"),
-            "price": row.get("priceRange"),
-            "shares": row.get("shares"),
-            "expectedDate": row.get("expectedDate"),
-        })
+        items.append(
+            {
+                "symbol": row.get("symbol"),
+                "name": row.get("companyName"),
+                "exchange": row.get("exchange"),
+                "price": row.get("priceRange"),
+                "shares": row.get("shares"),
+                "expectedDate": row.get("expectedDate"),
+            }
+        )
 
     return {
         "items": items,
@@ -267,16 +277,14 @@ async def upcoming_ipos():
         "timestamp": now_utc(),
     }
 
-WATCHLIST = [
-    "SPY", "QQQ", "IWM", "DIA",
-    "NVDA", "AAPL", "MSFT", "AMZN", "META", "TSLA",
-    "AMD", "SMCI", "PLTR", "NFLX", "GOOGL", "AVGO",
-    "COIN", "MSTR", "UBER", "ARM"
-]
-
 
 @app.get("/market/movers")
 async def market_movers():
+    cache_key = "market_movers"
+
+    if cache_key in movers_cache:
+        return movers_cache[cache_key]
+
     movers = []
 
     for sym in WATCHLIST:
@@ -294,15 +302,34 @@ async def market_movers():
         except Exception:
             continue
 
-    gainers = sorted(movers, key=lambda x: x["changePct"], reverse=True)[:5]
-    losers = sorted(movers, key=lambda x: x["changePct"])[:5]
-    active = sorted(movers, key=lambda x: x["volume"], reverse=True)[:5]
-
-    return {
-        "gainers": gainers,
-        "losers": losers,
-        "mostActive": active,
+    result = {
+        "gainers": sorted(movers, key=lambda x: x["changePct"], reverse=True)[:3],
+        "losers": sorted(movers, key=lambda x: x["changePct"])[:3],
+        "mostActive": sorted(movers, key=lambda x: x["volume"], reverse=True)[:3],
         "universeSize": len(movers),
         "source": "twelve-data-derived",
         "timestamp": now_utc(),
+    }
+
+    movers_cache[cache_key] = result
+    return result
+
+
+@app.get("/market/gainers")
+async def market_gainers():
+    data = await market_movers()
+    return {
+        "items": data["gainers"],
+        "source": data["source"],
+        "timestamp": data["timestamp"],
+    }
+
+
+@app.get("/market/losers")
+async def market_losers():
+    data = await market_movers()
+    return {
+        "items": data["losers"],
+        "source": data["source"],
+        "timestamp": data["timestamp"],
     }
