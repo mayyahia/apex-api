@@ -1,3 +1,7 @@
+from cachetools import TTLCache
+
+quote_cache = TTLCache(maxsize=200, ttl=30)
+series_cache = TTLCache(maxsize=100, ttl=30)
 from datetime import datetime, timezone
 import os
 
@@ -22,6 +26,12 @@ async def td_get(path: str, params: dict):
         raise HTTPException(status_code=500, detail="Missing TWELVE_DATA_API_KEY")
 
     merged = {**params, "apikey": TWELVE_DATA_API_KEY}
+    cache_key = f"{path}|{str(sorted(merged.items()))}"
+
+    cache = series_cache if path == "/time_series" else quote_cache
+    if cache_key in cache:
+        return cache[cache_key]
+
     async with httpx.AsyncClient(timeout=20.0) as client:
         resp = await client.get(f"{TD_BASE}{path}", params=merged)
         resp.raise_for_status()
@@ -30,6 +40,7 @@ async def td_get(path: str, params: dict):
     if isinstance(data, dict) and data.get("status") == "error":
         raise HTTPException(status_code=400, detail=data)
 
+    cache[cache_key] = data
     return data
 
 
