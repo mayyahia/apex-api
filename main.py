@@ -222,9 +222,26 @@ def ticker_news(symbol: str = Query(..., description="Ticker symbol")):
 
 
 @app.get("/ipos/upcoming")
-def upcoming_ipos():
+async def upcoming_ipos():
+    url = "https://www.nasdaq.com/market-activity/ipos"
+
+    headers = {
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "text/html,application/xhtml+xml",
+    }
+
+    async with httpx.AsyncClient(timeout=20.0, headers=headers, follow_redirects=True) as client:
+        resp = await client.get(url)
+
+    if resp.status_code >= 400:
+        raise HTTPException(status_code=resp.status_code, detail="Failed to fetch Nasdaq IPO page")
+
+    html = resp.text
+
     return {
         "items": [],
-        "source": "stub",
+        "source": "nasdaq-page",
         "timestamp": now_utc(),
+        "note": "Page fetch works, but parsing logic still needs to be added based on the current Nasdaq page structure.",
+        "preview": html[:2000]
     }
