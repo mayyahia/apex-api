@@ -61,3 +61,12 @@ def ticker_intraday(symbol: str = Query(..., description="Ticker symbol")):
         "source": "live-api",
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+
+@app.get("/ticker/news")
+def ticker_news(symbol: str = Query(..., description="Ticker symbol")):
+    return {
+        "symbol": symbol.upper(),
+        "items": [],
+        "source": "live-api",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
