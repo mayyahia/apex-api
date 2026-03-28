@@ -108,7 +108,18 @@ async def market_regime():
 @app.get("/index/snapshot")
 async def index_snapshot():
     data = await td_get("/quote", {"symbol": "SPY,QQQ,IWM,DIA"})
-    items = data if isinstance(data, list) else [data]
+
+    if isinstance(data, list):
+        items = data
+    elif isinstance(data, dict):
+        if "data" in data and isinstance(data["data"], list):
+            items = data["data"]
+        elif "symbol" in data:
+            items = [data]
+        else:
+            items = []
+    else:
+        items = []
 
     out = {"source": "twelve-data", "timestamp": now_utc()}
     for item in items:
@@ -121,6 +132,7 @@ async def index_snapshot():
             }
 
     return out
+
 
 
 @app.get("/sector/rotation")
