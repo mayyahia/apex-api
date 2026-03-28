@@ -302,9 +302,12 @@ async def market_movers():
         except Exception:
             continue
 
+    gainers = [x for x in movers if x["changePct"] > 0]
+    losers = [x for x in movers if x["changePct"] < 0]
+
     result = {
-        "gainers": sorted(movers, key=lambda x: x["changePct"], reverse=True)[:3],
-        "losers": sorted(movers, key=lambda x: x["changePct"])[:3],
+        "gainers": sorted(gainers, key=lambda x: x["changePct"], reverse=True)[:3],
+        "losers": sorted(losers, key=lambda x: x["changePct"])[:3],
         "mostActive": sorted(movers, key=lambda x: x["volume"], reverse=True)[:3],
         "universeSize": len(movers),
         "source": "twelve-data-derived",
@@ -320,6 +323,7 @@ async def market_gainers():
     data = await market_movers()
     return {
         "items": data["gainers"],
+        "count": len(data["gainers"]),
         "source": data["source"],
         "timestamp": data["timestamp"],
     }
@@ -330,6 +334,7 @@ async def market_losers():
     data = await market_movers()
     return {
         "items": data["losers"],
+        "count": len(data["losers"]),
         "source": data["source"],
         "timestamp": data["timestamp"],
     }
