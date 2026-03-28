@@ -70,3 +70,10 @@ def ticker_news(symbol: str = Query(..., description="Ticker symbol")):
         "source": "live-api",
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
+@app.get("/ipos/upcoming")
+def upcoming_ipos():
+    return {
+        "items": [],
+        "source": "live-api",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
