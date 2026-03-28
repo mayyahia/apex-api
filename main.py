@@ -146,3 +146,28 @@ async def ticker_intraday(symbol: str = Query(...), interval: str = "5min"):
         "source": "twelve-data",
         "timestamp": now_utc(),
     }
+@app.get("/sector/rotation")
+async def sector_rotation():
+    sector_symbols = "XLK,XLF,XLE,XLV,XLI,XLY,XLP,XLU,XLB,XLRE,XLC"
+    data = await td_get("/quote", {"symbol": sector_symbols})
+
+    items = data if isinstance(data, list) else [data]
+
+    parsed = []
+    for item in items:
+        try:
+            parsed.append({
+                "symbol": item.get("symbol"),
+                "changePct": float(item.get("percent_change", 0))
+            })
+        except Exception:
+            continue
+
+    parsed.sort(key=lambda x: x["changePct"], reverse=True)
+
+    return {
+        "leaders": parsed[:3],
+        "laggards": parsed[-3:],
+        "source": "twelve-data",
+        "timestamp": now_utc(),
+    }
