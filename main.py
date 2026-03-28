@@ -64,30 +64,23 @@ def health():
 
 @app.get("/market/regime")
 async def market_regime():
-    data = await td_get("/quote", {"symbol": "SPY,QQQ,IWM,DIA"})
+    spy = await td_get("/quote", {"symbol": "SPY"})
+    qqq = await td_get("/quote", {"symbol": "QQQ"})
+    iwm = await td_get("/quote", {"symbol": "IWM"})
 
-    if isinstance(data, list):
-        items = data
-    elif isinstance(data, dict):
-        if "data" in data and isinstance(data["data"], list):
-            items = data["data"]
-        elif "symbol" in data:
-            items = [data]
-        else:
-            items = []
-    else:
-        items = []
+    def pct(item):
+        try:
+            return float(item.get("percent_change", 0) or 0)
+        except Exception:
+            return 0.0
 
-    changes = {}
-    for item in items:
-        sym = item.get("symbol")
-        if sym in {"SPY", "QQQ", "IWM"}:
-            try:
-                changes[sym] = float(item.get("percent_change", 0) or 0)
-            except Exception:
-                changes[sym] = 0.0
+    changes = {
+        "SPY": pct(spy),
+        "QQQ": pct(qqq),
+        "IWM": pct(iwm),
+    }
 
-    avg = sum(changes.values()) / max(len(changes), 1)
+    avg = sum(changes.values()) / 3
 
     if avg > 0.5:
         regime = "risk-on"
@@ -101,57 +94,47 @@ async def market_regime():
         "drivers": changes,
         "source": "twelve-data",
         "timestamp": now_utc(),
-        "rawCount": len(items),
+        "rawCount": 3,
     }
 
 
 @app.get("/index/snapshot")
 async def index_snapshot():
-    data = await td_get("/quote", {"symbol": "SPY,QQQ,IWM,DIA"})
-
-    if isinstance(data, list):
-        items = data
-    elif isinstance(data, dict):
-        if "data" in data and isinstance(data["data"], list):
-            items = data["data"]
-        elif "symbol" in data:
-            items = [data]
-        else:
-            items = []
-    else:
-        items = []
-
+    symbols = ["SPY", "QQQ", "IWM", "DIA"]
     out = {"source": "twelve-data", "timestamp": now_utc()}
-    for item in items:
-        sym = item.get("symbol")
-        if sym:
-            out[sym] = {
-                "price": item.get("close"),
-                "change": item.get("change"),
-                "changePct": item.get("percent_change"),
-            }
+
+    for sym in symbols:
+        item = await td_get("/quote", {"symbol": sym})
+        out[sym] = {
+            "price": item.get("close"),
+            "change": item.get("change"),
+            "changePct": item.get("percent_change"),
+        }
 
     return out
 
 
-
 @app.get("/sector/rotation")
 async def sector_rotation():
-    sector_symbols = "XLK,XLF,XLE,XLI,XLY,XLV"
-    data = await td_get("/quote", {"symbol": sector_symbols})
-    items = data if isinstance(data, list) else [data]
-
+    sector_symbols = ["XLK", "XLF", "XLE", "XLI", "XLY", "XLV"]
     parsed = []
-    for item in items:
+
+    for sym in sector_symbols:
+        item = await td_get("/quote", {"symbol": sym})
         try:
             parsed.append(
                 {
-                    "symbol": item.get("symbol"),
-                    "changePct": float(item.get("percent_change", 0)),
+                    "symbol": sym,
+                    "changePct": float(item.get("percent_change", 0) or 0),
                 }
             )
         except Exception:
-            continue
+            parsed.append(
+                {
+                    "symbol": sym,
+                    "changePct": 0.0,
+                }
+            )
 
     parsed.sort(key=lambda x: x["changePct"], reverse=True)
 
